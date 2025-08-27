@@ -1,112 +1,166 @@
-Store Monitoring Report System
-This project is a backend service designed to monitor restaurant store statuses and generate uptime/downtime reports. It provides a REST API to trigger asynchronous report generation and poll for the results.
 
-Features
-Asynchronous Report Generation: API calls return instantly while report generation is handled in the background using a job queue.
+# Store Monitoring Report System
 
-REST API: Simple endpoints to trigger reports and retrieve their status or final CSV output.
+This is a backend service built to solve a real-world problem: monitoring restaurant uptime. The system ingests store status data, compares it against local business hours, and generates on-demand uptime/downtime reports.
 
-Timezone-Aware Calculations: Accurately calculates uptime/downtime by converting local business hours to UTC.
+The core of the project is an asynchronous data processing pipeline. An API call triggers a report, but the heavy calculation work is handled by a background worker, which is a common pattern for scalable applications.
 
-Data Extrapolation: Intelligently fills in the gaps between hourly status polls to estimate uptime for the entire business day.
+---
 
-Containerized Services: Uses Docker to manage PostgreSQL and Redis for a consistent development environment.
+## System Architecture / Flow
 
-Tech Stack
-Backend: Node.js, Express.js, TypeScript
+The application is split into two main parts: a lightweight API server and a background worker. This ensures that user requests are handled instantly, even if the report generation takes time.
 
-Database: PostgreSQL
+<p align="center">
+  <img src="./assets/1.png" alt="System Architecture" width="800">
+</p>
 
-ORM: Prisma
 
-Job Queue: BullMQ
 
-Message Broker: Redis
+1.  A **User** hits the `POST /trigger_report` endpoint.
+2.  The **API Server** doesn't do any calculations. It just creates a new report entry in the database, adds a job to a Redis queue, and immediately responds with a `report_id`.
+3.  A separate **Worker** process, which is always listening to the Redis queue, picks up this new job.
+4.  The **Worker** is the powerhouse. It pulls all the necessary data from the database, performs the complex timezone-aware calculations, and saves the final report as a CSV file to the server's filesystem.
+5.  As it works, the Worker updates the report's status in the database (from `PENDING` to `RUNNING` to `COMPLETE`).
+6.  The **User** can periodically call the `GET /get_report` endpoint with their `report_id` to either get the current status or, once complete, download the final CSV file.
 
-Containerization: Docker
+---
 
-Setup and Installation
-Follow these steps to get the project up and running on your local machine.
+## Video Demo
 
-Prerequisites
-Node.js (v18 or later)
+A brief walkthrough of the project setup and a live demonstration of the API in action.
 
-pnpm (or npm/yarn)
+**[Link to Your Demo Video Here]** (e.g., YouTube, Loom)
 
-Docker and Docker Compose
+---
 
-1. Clone & Install Dependencies
-Clone the repository and install the necessary packages.
+## Tech Stack
 
-git clone <your-repo-url>
-cd <your-repo-name>
+| Category           | Technology                        |
+| ------------------ | --------------------------------- |
+| **Backend** | Node.js, Express.js, TypeScript   |
+| **Database** | PostgreSQL                        |
+| **ORM** | Prisma                            |
+| **Job Queue** | BullMQ                            |
+| **Message Broker** | Redis                             |
+| **Containerization**| Docker                            |
+
+---
+
+## Setup and Installation
+
+Follow these steps to get the project running locally.
+
+### Prerequisites
+
+* Node.js (v18 or later)
+* pnpm (or npm/yarn)
+* Docker and Docker Compose
+
+### 1. Clone & Install Dependencies
+
+Clone the repository and install the packages.
+
+```bash
+git clone https://github.com/priyanshu-tiwariii/priyanshuTiwari-27-08-2025
+cd priyanshuTiwari-27-08-2025
 pnpm install
+````
 
-2. Start Services
-This command will start the PostgreSQL database and Redis server in the background.
+### 2\. Start Services
 
+This command starts the PostgreSQL and Redis containers.
+
+```bash
 docker-compose up -d
+```
 
-3. Setup Database Schema
-Apply the database schema to create all the necessary tables.
+### 3\. Setup Database Schema
 
+This command creates the tables in the database based on the Prisma schema.
+
+```bash
 npx prisma migrate dev
+```
 
-4. Seed the Database
-Populate the database with the initial data from the provided CSV files. Make sure the CSVs are located in the /data directory.
+### 4\. Seed the Database
 
+This script populates the database with the initial data from the CSV files. The CSVs must be in the `/data` directory.
+
+```bash
 npm run db:seed
+```
 
-Running the Application
-The application consists of two main processes that need to be run in separate terminals.
+-----
 
-Terminal 1: Start the Worker
-The worker is responsible for processing jobs from the queue.
+## Running the Application
 
+The application requires two separate processes to be running in two different terminals.
+
+**Terminal 1: Start the Worker**
+This process listens for and executes jobs.
+
+```bash
 node --loader ts-node/esm src/workers/reportWorker.ts
+```
 
-Terminal 2: Start the API Server
-The server handles incoming HTTP requests.
+**Terminal 2: Start the API Server**
+This process handles user requests.
 
+```bash
 npm start
+```
 
-The API will be available at http://localhost:3000.
+The API will then be available at `http://localhost:3000`.
 
-API Usage
-Trigger a Report
-Sends a request to start generating a new report.
+-----
 
-Endpoint: POST /trigger_report
+## API Usage
 
-Response: A JSON object with the report_id.
+### Trigger a Report
 
-Example curl command:
+Kicks off the report generation process.
 
+  * **Endpoint**: `POST /trigger_report`
+  * **Response**: A JSON object with the `report_id`.
+
+**Example `curl` command:**
+
+```bash
 curl -X POST http://localhost:3000/trigger_report
+```
 
-Get a Report
-Polls for the status of a report. If complete, it returns the CSV file.
+### Get a Report
 
-Endpoint: GET /get_report
+Checks the status of a report. If it's complete, the CSV file is returned.
 
-Query Parameter: report_id
+  * **Endpoint**: `GET /get_report`
+  * **Query Parameter**: `report_id`
+  * **Response**:
+      * If pending/running: `{"status": "RUNNING"}`
+      * If complete: The CSV file as a download.
 
-Response:
+**Example `curl` command:**
 
-If pending/running: {"status": "RUNNING"}
+```bash
+# Replace REPORT_ID with the ID from the trigger response
+curl "http://localhost:3000/get_report?report_id=REPORT_ID"
+```
 
-If complete: The CSV file as a download.
+-----
 
-Example curl command:
+## Ideas for Improvement
 
-# Replace YOUR_REPORT_ID with the ID from the trigger response
-curl "http://localhost:3000/get_report?report_id=YOUR_REPORT_ID" --output generated_report.csv
+  * **Scalability**: Currently, one worker job handles all stores. For a larger scale, the main job could spawn child jobs for batches of stores. This would allow for parallel processing across multiple worker instances and significantly speed up report generation.
+  * **Data Aggregation**: For a system with years of data, querying the raw status logs every time would be inefficient. A better approach would be to run a nightly job that pre-calculates daily uptime/downtime and stores it in an aggregate table. Reports would then be generated from this summary table almost instantly.
+  * **Error Handling & Retries**: The BullMQ worker could be configured with a retry strategy. If a job fails due to a temporary issue (like a brief database disconnection), it could automatically retry a few times before marking the report as failed.
+  * **Configuration Management**: Hardcoded values like database and Redis connection details should be moved into environment variables (`.env` file). This is standard practice and makes it easy to configure the application for different environments (development, staging, production).
 
-Ideas for Improvement
-Scalability: The current worker processes the report for all stores in a single job. For a larger dataset, this could be slow. A better approach would be for the main job to spawn child jobs for each store (or batches of stores), allowing for parallel processing across multiple worker instances.
+-----
 
-Data Aggregation: For very large historical datasets, querying the raw status log table would become a bottleneck. A materialized view or a nightly aggregation job could pre-calculate daily uptime/downtime, making report generation nearly instantaneous.
+## Sample Output
 
-Error Handling & Retries: The BullMQ worker could be configured with a robust retry strategy for jobs that fail due to transient issues (e.g., temporary database disconnects).
+A sample CSV file generated by the system, named `sample_report_output.csv`, is included in the root of this repository.
 
-Configuration Management: Moving hardcoded values (like Redis connection details) into environment variables for better configuration across different environments (development, staging, production).
+```
+```
