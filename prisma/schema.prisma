@@ -1,0 +1,40 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+
+model Store {
+  id            String          @id
+  timezoneStr   String          @default("America/Chicago")
+  businessHours BusinessHours[]
+  statusLogs    StoreStatus[]
+}
+
+model BusinessHours {
+  id            Int      @id @default(autoincrement())
+  storeId       String
+  dayOfWeek     Int 
+  startTimeLocal String
+  endTimeLocal  String
+  store         Store    @relation(fields: [storeId], references: [id])
+}
+
+model StoreStatus {
+  id          Int      @id @default(autoincrement())
+  storeId     String
+  timestampUtc DateTime
+  status      String 
+  store       Store    @relation(fields: [storeId], references: [id])
+}
