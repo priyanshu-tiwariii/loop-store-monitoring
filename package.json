@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "start": "node --loader ts-node/esm src/index.ts",
-    "db:seed" : "ts-node src/scripts/ingestData.ts",
+    "db:seed": "ts-node src/scripts/ingestData.ts",
     "postinstall": "prisma generate",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -15,9 +15,11 @@
   "license": "ISC",
   "packageManager": "pnpm@10.14.0",
   "dependencies": {
-    "csv-parser": "^3.2.0",
     "@prisma/client": "^6.14.0",
-    "express": "^5.1.0"
+    "bullmq": "^5.58.2",
+    "csv-parser": "^3.2.0",
+    "express": "^5.1.0",
+    "ioredis": "^5.7.0"
   },
   "devDependencies": {
     "@types/express": "^5.0.3",

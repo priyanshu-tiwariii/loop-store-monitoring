@@ -1,10 +1,22 @@
 import type { Request, Response } from "express";
+import { PrismaClient } from "@prisma/client";
+import { randomUUID } from "crypto";
+import { reportQueue } from "../queues/report.queue.js";
 
+const prisma = new PrismaClient();
 export const triggerReport = async (req : Request, res: Response)=>{
     console.log("Received request to trigger report");
-    const reportId = `report_${Math.random().toString(36).substring(2,8)}`;
-    console.log(`Report generation started with Report ID : ${reportId}`);
-    return res.status(202).json({reportId, message: "Report generation started"});
+ const newReport = await prisma.report.create({
+    data:{
+        id:randomUUID(),
+        status:'PENDING'
+    }
+ })
+
+ await reportQueue.add('generate_report', {reportId:newReport.id});
+
+    console.log('Created report and added for the job with reportId : ', newReport.id);
+    return res.status(202).json({report_id: newReport.id});
 }
 
 export const getReport = async (req : Request, res: Response)=>{
@@ -17,8 +29,22 @@ export const getReport = async (req : Request, res: Response)=>{
     }
 
     console.log(`Fetching report with Report ID : ${reportId}`);
+    const report = await prisma.report.findUnique({
+        where: { id: reportId }
+    })
+    if(!report){
+        return res.status(404).json({
+            error: "Report not found"
+        })
+    }
+
+    if (report.status === 'COMPLETE') {
+        res.setHeader('Content-Type','text/csv')
+        res.setHeader('Content-Disposition', `attachment; filename=${reportId}.csv`);
+        return res.status(200).send(`Dummy CSV content for report ${reportId}`);
+    }
     return res.status(200).json({
-        status : "Running"
+        status : report.status,
     })
 
 }
